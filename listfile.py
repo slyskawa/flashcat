@@ -1,5 +1,5 @@
 #! /usr/bin/python
-#Listfile.py Version 3.2
+#Listfile.py Version 4.0
 
 #Command line arguments, drive, directory
 
@@ -21,21 +21,29 @@ def getVolumeID(dLetter):
     vserial = lvID[1].split()[-1:][0]
     return vname,vserial
 
-if len(sys.argv) == 2:
-    driveLetter=sys.argv[1]
-    directory=":\\"
-if len(sys.argv) == 3:
-    driveLetter=sys.argv[1]
-    directory=":\\"+sys.argv[2]
-
-x="/Volumes/FD-04-A"
-#volumeName,volumeSerial = getVolumeID(driveLetter)
-volumeName=x
-volumeSerial="1234"
-diskID="%s_%s"%(volumeName,volumeSerial)
+if len(sys.argv) < 2:
+        print "Enter VolumeID or Drive letter for flash drive"
+        exit()
+if sys.platform == 'darwin':
+    diskID=sys.argv[1].upper()
+    print diskID
+else:
+    if len(sys.argv) == 2:
+        driveLetter=sys.argv[1]
+        directory=":\\"
+    if len(sys.argv) == 3:
+        driveLetter=sys.argv[1]
+        directory=":\\"+sys.argv[2]
+    volumeName,volumeSerial = getVolumeID(driveLetter)
+    diskID="%s_%s"%(volumeName,volumeSerial)
 id = diskID
 dirCount = 0
 fileCount = 0
+
+skip1=x+"/.Spotlight"
+skip2=x+"/.fseventsd"
+tSkipMe = (skip1,skip2)
+print tSkipMe
 
 dbName=id+".db3"
 db=sqlite3.connect(dbName)
@@ -72,6 +80,7 @@ def walker(arg, dirname, fnames):
     os.chdir(dirname)
     fileCount = 0
     for f in fnames:
+        print "f"
         if not os.path.isfile(f):
             fileDb.execute('''insert into directory(dir,id) values("%s","%s")'''%(f,id))
             ldirCount.append(f)
@@ -88,6 +97,7 @@ def walker(arg, dirname, fnames):
             todaysDate=datetime.datetime.now().strftime("%Y-%m-%d")
             modifyDate = datetime.datetime.fromtimestamp(ftime)
             tDbValues = (f,extension,size,modifyDate,dname,MediaID,todaysDate,fhash)
+            print "%s, %s, %s, %s, %s \n"%(MediaID,filename,ext,path,filedate)
             fileDb.execute('''insert into files(filename,ext,filesize,filedate,path,MediaID,runDate,hash) values("%s","%s","%s","%s","%s","%s","%s","%s")'''%tDbValues)
             #print ".",
             fileCount += 1
@@ -119,22 +129,27 @@ def directoryWalker(dirname):
             todaysDate=datetime.datetime.now().strftime("%Y-%m-%d")
             modifyDate = datetime.datetime.fromtimestamp(ftime)
             tDbValues = (f,extension,size,modifyDate,dname,MediaID,todaysDate,fhash)
-            fileDb.execute('''insert into files(filename,ext,filesize,filedate,path,MediaID,runDate,hash) values("%s","%s","%s","%s","%s","%s","%s","%s")'''%tDbValues)
-            #print ".",
-            fileCount += 1
-            print "%i "%(fileCount),
-            #print f,size,modifyDate,dirname,fhash
+            if dname.startswith(tSkipMe):
+                continue
+            else:
+                fileDb.execute('''insert into files(filename,ext,filesize,filedate,path,MediaID,runDate,hash) values("%s","%s","%s","%s","%s","%s","%s","%s")'''%tDbValues)
+                #print ".",
+                fileCount += 1
+                print "%i "%(fileCount),
+                print f,size,modifyDate,dirname,dname
     totalFiles.append(fileCount)
     os.chdir(d)
 
 
 print 'Scanning directory "%s"....' % x
 ldirCount = []
+
 totalFiles=[]
 #os.path.walk(x, walker, filesBySize)
 directoryWalker(x)
 dirCount=len(ldirCount)
 fileCount=sum(totalFiles)
+print totalFiles
 #added 2012-01-23
 #Dir field in directory table only contains dir.  Put in full path pulled.
 fileDb.execute("insert into directory SELECT distinct path, MediaID from files")
