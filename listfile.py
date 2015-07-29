@@ -28,8 +28,10 @@ if len(sys.argv) == 3:
     driveLetter=sys.argv[1]
     directory=":\\"+sys.argv[2]
 
-x=driveLetter+directory
-volumeName,volumeSerial = getVolumeID(driveLetter)
+x="/Volumes/FD-04-A"
+#volumeName,volumeSerial = getVolumeID(driveLetter)
+volumeName=x
+volumeSerial="1234"
 diskID="%s_%s"%(volumeName,volumeSerial)
 id = diskID
 dirCount = 0
@@ -64,15 +66,6 @@ def get_fingerprint(filename):
         return '0'
     else:
         return digest.hexdigest()
-"""
-        f = file(filename, "rb")
-        try:
-            f.seek(0)
-        except:
-            print filename, ": unable to seek"
-            return 0
-        return hashlib.md5(f.read(16000)).hexdigest()
-"""
 
 def walker(arg, dirname, fnames):
     d = os.getcwd()
@@ -103,11 +96,43 @@ def walker(arg, dirname, fnames):
     totalFiles.append(fileCount)
     os.chdir(d)
 
+def directoryWalker(dirname):
+    d = os.getcwd()
+    os.chdir(dirname)
+    fileCount = 0
+    for root, dirs, allFiles in os.walk(dirname):
+        #print "\nRoot=%s, dir=%s, file=%s"%(root,dirs,allFiles)
+        for everyDir in dirs:
+            fileDb.execute('''insert into directory(dir,id) values("%s","%s")'''%(everyDir,id))
+            ldirCount.append(everyDir)
+            print "\nDir %s"%(everyDir)
+        for everyFile in allFiles:
+            fullName=os.path.join(root,everyFile)
+            f=everyFile.lower()
+            size = os.stat(fullName)[stat.ST_SIZE]
+            ftime = os.stat(fullName)[stat.ST_MTIME]
+            ext = os.path.splitext(f)
+            extension= ext[1]
+            fhash  = get_fingerprint(fullName)
+            dname=os.path.splitdrive(root)[1]
+            MediaID=id
+            todaysDate=datetime.datetime.now().strftime("%Y-%m-%d")
+            modifyDate = datetime.datetime.fromtimestamp(ftime)
+            tDbValues = (f,extension,size,modifyDate,dname,MediaID,todaysDate,fhash)
+            fileDb.execute('''insert into files(filename,ext,filesize,filedate,path,MediaID,runDate,hash) values("%s","%s","%s","%s","%s","%s","%s","%s")'''%tDbValues)
+            #print ".",
+            fileCount += 1
+            print "%i "%(fileCount),
+            #print f,size,modifyDate,dirname,fhash
+    totalFiles.append(fileCount)
+    os.chdir(d)
+
 
 print 'Scanning directory "%s"....' % x
 ldirCount = []
 totalFiles=[]
-os.path.walk(x, walker, filesBySize)
+#os.path.walk(x, walker, filesBySize)
+directoryWalker(x)
 dirCount=len(ldirCount)
 fileCount=sum(totalFiles)
 #added 2012-01-23
