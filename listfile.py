@@ -1,7 +1,5 @@
 #! /usr/bin/python
-#Listfile.py 
-Version="4.1"
-print "Version %s"%Version
+#Listfile.py Version 3.2
 
 #Command line arguments, drive, directory
 
@@ -14,7 +12,6 @@ import hashlib
 import datetime
 import sqlite3
 
-
 def getVolumeID(dLetter):
     dLetter=dLetter+":"
     vID = os.popen('vol '+dLetter, 'r').read()  #Read windows volume information
@@ -25,39 +22,21 @@ def getVolumeID(dLetter):
     vserial = lvID[1].split()[-1:][0]
     return vname,vserial
 
-if len(sys.argv) < 2:
-    di = raw_input("Enter VolumeID or Drive letter for flash drive: ")
-    diskID = "/Volumes/{}".format(di)
-    x = diskID
-    did = di.upper()
-else:
-    if sys.platform == 'darwin':
-        diskID=sys.argv[1].upper()
-        print diskID
-        x="/Volumes/"+diskID
-        did = diskID
-    if len(sys.argv) == 2:
-        driveLetter=sys.argv[1]
-        directory=":\\"
-    if len(sys.argv) == 3:
-        driveLetter=sys.argv[1]
-        directory=":\\"+sys.argv[2]
-        x=driveLetter+directory
-    volumeName,volumeSerial = getVolumeID(driveLetter)
-    diskID="%s_%s"%(volumeName,volumeSerial)
-    did = diskID
-print did
+if len(sys.argv) == 2:
+    driveLetter=sys.argv[1]
+    directory=":\\"
+if len(sys.argv) == 3:
+    driveLetter=sys.argv[1]
+    directory=":\\"+sys.argv[2]
+
+x=driveLetter+directory
+volumeName,volumeSerial = getVolumeID(driveLetter)
+diskID="%s_%s"%(volumeName,volumeSerial)
+id = diskID
 dirCount = 0
 fileCount = 0
-#Skip Mac hidden files
-skip1=".Spotlight"
-skip2=".fseventsd"
-tSkipMe = (skip1,skip2)
-regexSkipMe= skip1 + "|" + skip2
-reSkipMe = re.compile(regexSkipMe)
-print tSkipMe
 
-dbName = did+".db3"
+dbName=id+".db3"
 db=sqlite3.connect(dbName)
 print dbName
 
@@ -87,68 +66,79 @@ def get_fingerprint(filename):
     else:
         return digest.hexdigest()
 
+def walker(arg, dirname, fnames):
+    d = os.getcwd()
+    os.chdir(dirname)
+    fileCount = 0
+    for f in fnames:
+        if not os.path.isfile(f):
+            fileDb.execute('''insert into directory(dir,id) values("%s","%s")'''%(f,id))
+            ldirCount.append(f)
+            print "\nDir %s"%(f)
+        else:
+            f=f.lower()
+            size = os.stat(f)[stat.ST_SIZE]
+            ftime = os.stat(f)[stat.ST_MTIME]
+            ext = os.path.splitext(f)
+            extension= ext[1]
+            fhash  = get_fingerprint(f)
+            dname=os.path.splitdrive(dirname)[1]
+            MediaID=id
+            todaysDate=datetime.datetime.now().strftime("%Y-%m-%d")
+            modifyDate = datetime.datetime.fromtimestamp(ftime)
+            tDbValues = (f,extension,size,modifyDate,dname,MediaID,todaysDate,fhash)
+            fileDb.execute('''insert into files(filename,ext,filesize,filedate,path,MediaID,runDate,hash) values("%s","%s","%s","%s","%s","%s","%s","%s")'''%tDbValues)
+            #print ".",
+            fileCount += 1
+            print "%i "%(fileCount),
+            #print f,size,modifyDate,dirname,fhash
+    totalFiles.append(fileCount)
+    os.chdir(d)
+
 def directoryWalker(dirname):
     d = os.getcwd()
-    print "Line 120:%s"%dirname
     os.chdir(dirname)
     fileCount = 0
     for root, dirs, allFiles in os.walk(dirname):
         #print "\nRoot=%s, dir=%s, file=%s"%(root,dirs,allFiles)
-        #print "\nRoot=%s, dir=%s\n"%(root,dirs)
         for everyDir in dirs:
             fileDb.execute('''insert into directory(dir,id) values("%s","%s")'''%(everyDir,id))
             ldirCount.append(everyDir)
-            print "\nDirectory: %s"%(everyDir)
-        skipMe = reSkipMe.search(root)
-        if skipMe:
-            print 20*"#"
-            print "\nRoot=%s, dir=%s, file=%s"%(root,dirs,allFiles)
-            print "Skipping: %s - %s\n"%(root,everyDir)  
-            print 20*"#"
-        else:
-#start
-            for everyFile in allFiles:
-                fullName=os.path.join(root,everyFile)
-                f=everyFile.lower()
-                size = os.stat(fullName)[stat.ST_SIZE]
-                ftime = os.stat(fullName)[stat.ST_MTIME]
-                ext = os.path.splitext(f)
-                extension= ext[1]
-                fhash  = get_fingerprint(fullName)
-                dname=os.path.splitdrive(root)[1]
-                MediaID=id
-                todaysDate=datetime.datetime.now().strftime("%Y-%m-%d")
-                modifyDate = datetime.datetime.fromtimestamp(ftime)
-                tDbValues = (f,extension,size,modifyDate,dname,MediaID,todaysDate,fhash)
-                #print "%s, %s, %s, %s, %s \n"%(MediaID,everyFile,extension,dname,modifyDate)
-                if dname.startswith(tSkipMe):
-                    continue
-                else:
-                    fileDb.execute('''insert into files(filename,ext,filesize,filedate,path,MediaID,runDate,hash) values("%s","%s","%s","%s","%s","%s","%s","%s")'''%tDbValues)
-                    print ".",
-                    fileCount += 1
-                    #print "%i "%(fileCount),
-                    #print f,size,modifyDate,dirname,dname
-#end
+            print "\nDir %s"%(everyDir)
+        for everyFile in allFiles:
+            fullName=os.path.join(root,everyFile)
+            f=everyFile.lower()
+            size = os.stat(fullName)[stat.ST_SIZE]
+            ftime = os.stat(fullName)[stat.ST_MTIME]
+            ext = os.path.splitext(f)
+            extension= ext[1]
+            fhash  = get_fingerprint(fullName)
+            dname=os.path.splitdrive(root)[1]
+            MediaID=id
+            todaysDate=datetime.datetime.now().strftime("%Y-%m-%d")
+            modifyDate = datetime.datetime.fromtimestamp(ftime)
+            tDbValues = (f,extension,size,modifyDate,dname,MediaID,todaysDate,fhash)
+            fileDb.execute('''insert into files(filename,ext,filesize,filedate,path,MediaID,runDate,hash) values("%s","%s","%s","%s","%s","%s","%s","%s")'''%tDbValues)
+            #print ".",
+            fileCount += 1
+            print "%i "%(fileCount),
+            #print f,size,modifyDate,dirname,fhash
     totalFiles.append(fileCount)
     os.chdir(d)
 
 
-print 'Scanning directory "%s"....' % diskID
+print 'Scanning directory "%s"....' % x
 ldirCount = []
-
 totalFiles=[]
 #os.path.walk(x, walker, filesBySize)
 directoryWalker(x)
 dirCount=len(ldirCount)
 fileCount=sum(totalFiles)
-print 'Total files: {}'.format(totalFiles)
 #added 2012-01-23
 #Dir field in directory table only contains dir.  Put in full path pulled.
 fileDb.execute("insert into directory SELECT distinct path, MediaID from files")
 db.commit()
 fileDb.close()
 db.close()
-print 'ldircount: {}'.format(ldirCount)
+print ldirCount
 print "\n\n%s\nDirectories=%i\nFiles=%i\nScanning complete!"%(dbName,dirCount,fileCount)
-print "Version %s"%(Version)
